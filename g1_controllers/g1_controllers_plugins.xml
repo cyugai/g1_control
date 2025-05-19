@@ -1,0 +1,16 @@
+<library path="lib/libg1_controllers">
+
+    <class name="g1_controller/g1Controller" type="g1_controller::g1Controller"
+           base_class_type="controller_interface::ControllerBase">
+        <description>
+            The basic g1 controller.
+        </description>
+    </class>
+
+    <class name="g1_controller/g1CheaterController" type="g1_controller::g1CheaterController"
+           base_class_type="controller_interface::ControllerBase">
+        <description>
+            The basic g1 controller with cheat state estimator
+        </description>
+    </class>
+</library>
