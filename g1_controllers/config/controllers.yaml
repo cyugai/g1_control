@@ -1,0 +1,8 @@
+controllers:
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 100
+  g1_controller:
+    type: g1_controller/g1Controller
+  g1_cheater_controller:
+    type: g1_controller/g1CheaterController
