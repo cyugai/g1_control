@@ -280,7 +280,8 @@ def main():
     # ros init
     rclpy.init()
     hector_desc_path = get_prefix_path('g1_legged_description')
-    xml_path = hector_desc_path + "/share/g1_legged_description/mjcf/g1_legged_control_.xml"
+    xml_path = hector_desc_path + "/share/g1_legged_description/mjcf/g1_29_rtiq85_2f85_v4_lower.xml"
+    # xml_path = hector_desc_path + "/share/g1_legged_description/mjcf/g1_legged_control_.xml"
 
 
     sim = g1Sim(xml_path)#创建仿真节点

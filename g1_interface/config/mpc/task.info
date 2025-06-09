@@ -161,13 +161,13 @@ Q
   (13,13) 400.0     ; left_hip_roll_joint  leg_l1_joint 400 
   (14,14) 250.0     ;  left_hip_yaw_joint   leg_l2_joint  250
   (15,15) 30.0     ; left_knee_joint  
-  (16,16) 150.0     ; left_ankle_pitch_joint
+  (16,16) 100.0     ; left_ankle_pitch_joint
   (17,17) 10.0     ; left_ankle_roll_joint 
   (18,18) 50.0     ; right_hip_pitch_joint
   (19,19) 400.0     ; right_hip_roll_joint
   (20,20) 250.0     ; right_hip_yaw_joint
   (21,21) 30.0     ; right_knee_joint  
-  (22,22) 150.0     ; right_ankle_pitch_joint no use
+  (22,22) 100.0     ; right_ankle_pitch_joint no use
   (23,23) 10.0     ; right_ankle_roll_joint 
 }
 

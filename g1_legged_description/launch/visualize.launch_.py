@@ -7,12 +7,14 @@ from ament_index_python.packages import get_package_share_directory
 
 def get_urdf_file(robot_name):
 
-    urdf_file = get_package_share_directory('g1_legged_description') + "/urdf/g1_legged_control_.urdf"
+    urdf_file = get_package_share_directory('g1_legged_description') + "/urdf/g1_29_rtiq85_lower.urdf"
+    # urdf_file = get_package_share_directory('g1_legged_description') + "/urdf/g1_legged_control_.urdf"
     return urdf_file
 
 
 def launch_setup(context, *args, **kwargs):
-    rviz_config_file = get_package_share_directory('g1_legged_description') + "/rviz/g1_legged_control.rviz"
+    rviz_config_file = get_package_share_directory('g1_legged_description') + "/rviz/g1_29_2f85_lower.rviz"
+    # rviz_config_file = get_package_share_directory('g1_legged_description') + "/rviz/g1_legged_control.rviz"
 
     robot_name = LaunchConfiguration('robot_name').perform(context)
     print("Visualizing robot: " + robot_name)

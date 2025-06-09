@@ -8,7 +8,8 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     #load rviz config file
-    rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1.rviz"
+    rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1_29_2f85.rviz"
+    # rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1.rviz"
     ld = launch.LaunchDescription([
         launch.actions.DeclareLaunchArgument(
             name='rviz',
@@ -35,7 +36,8 @@ def generate_launch_description():
         launch.actions.DeclareLaunchArgument(
             name='urdfFile',
             default_value=get_package_share_directory(
-                'g1_legged_description') + '/urdf/g1_legged_control_.urdf'
+                'g1_legged_description') + '/urdf/g1_29_rtiq85_lower.urdf'
+                # 'g1_legged_description') + '/urdf/g1_legged_control_.urdf'
         ),#this urdf is for rivz control
         launch.actions.DeclareLaunchArgument(
             name='urdfFileOrigin',

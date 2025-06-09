@@ -34,7 +34,8 @@ def generate_launch_description():
         launch.actions.DeclareLaunchArgument(
             name='urdfFile',
             default_value=get_package_share_directory(
-                'g1_legged_description') + '/urdf/g1_legged_control_.urdf'
+                'g1_legged_description') + '/urdf/g1_29_rtiq85_lower.urdf'
+                # 'g1_legged_description') + '/urdf/g1_legged_control_.urdf'
         ),
         launch.actions.DeclareLaunchArgument(
             name='urdfFileOrigin',
