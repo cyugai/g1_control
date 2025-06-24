@@ -14,10 +14,14 @@ from threading import Thread
 from rclpy.time import Time
 import array
 
-init_joint_pos = np.array([-0.4, 0.0, 0.0, 0.87, -0.52, 0.0, -0.4, 0.0, 0.0, 0.87, -0.52, 0.0])
+init_joint_pos = np.array([-0.4, 0.0, 0.0, 0.87, -0.52, 0.0, -0.4, 0.0, 0.0, 0.87, -0.52, 0.0,
+                            0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 init_base_pos = np.array([0, 0, 0.75])
 init_base_eular_zyx = np.array([0.0, -0., 0.0])
 imu_eular_bias = np.array([0.0, 0.0, 0.0])
+whole_body_dofs = 29 # total number of DoFs in the model
 
 class g1Sim(MuJoCoBase):
   def __init__(self, xml_path = str):
@@ -37,10 +41,10 @@ class g1Sim(MuJoCoBase):
 
     # initialize target joint position, velocity, and torque
     self.targetPos = init_joint_pos
-    self.targetVel = np.zeros(12)
-    self.targetTorque = np.zeros(12)
-    self.targetKp = np.zeros(12)
-    self.targetKd = np.zeros(12)
+    self.targetVel = np.zeros(whole_body_dofs)
+    self.targetTorque = np.zeros(whole_body_dofs)
+    self.targetKp = np.zeros(whole_body_dofs)
+    self.targetKd = np.zeros(whole_body_dofs)
 
     self.pubJoints = self.node.create_publisher(Float32MultiArray, '/jointsPosVel', 2)
     self.pubOdom = self.node.create_publisher(Odometry, '/ground_truth/state', 2)
@@ -57,10 +61,10 @@ class g1Sim(MuJoCoBase):
     self.data.qpos[:3] = init_base_pos
     # init rpy to init quaternion
     self.data.qpos[3:7] = R.from_euler('xyz', init_base_eular_zyx).as_quat()
-    self.data.qpos[-12:] = init_joint_pos
+    self.data.qpos[-whole_body_dofs:] = init_joint_pos
 
     self.data.qvel[:3] = np.array([0, 0, 0])
-    self.data.qvel[-12:] = np.zeros(12)
+    self.data.qvel[-whole_body_dofs:] = np.zeros(whole_body_dofs)
 
     # * show the model
     mj.mj_step(self.model, self.data)
@@ -126,7 +130,7 @@ class g1Sim(MuJoCoBase):
           self.pubSimState.publish(simState)  
         if (time.time() - sim_epoch_start >= 1.0 / self.sim_rate):
           # MIT control
-          self.data.ctrl[:] = self.targetTorque + self.targetKp * (self.targetPos - self.data.qpos[-12:]) + self.targetKd * (self.targetVel - self.data.qvel[-12:])
+          self.data.ctrl[:] = self.targetTorque + self.targetKp * (self.targetPos - self.data.qpos[-whole_body_dofs:]) + self.targetKd * (self.targetVel - self.data.qvel[-whole_body_dofs:])
           # Step simulation environment
           mj.mj_step(self.model, self.data)
           sim_epoch_start = time.time()
@@ -136,8 +140,8 @@ class g1Sim(MuJoCoBase):
           # * Publish joint positions and velocities
           jointsPosVel = Float32MultiArray()
           # get last 12 element of qpos and qvel
-          qp = self.data.qpos[-12:].copy()
-          qv = self.data.qvel[-12:].copy()
+          qp = self.data.qpos[-whole_body_dofs:].copy()
+          qv = self.data.qvel[-whole_body_dofs:].copy()
           jointsPosVel_ = np.concatenate((qp,qv))
           jointsPosVel.data = array.array( 'f' , jointsPosVel_.tolist())
           
@@ -207,8 +211,8 @@ class g1Sim(MuJoCoBase):
         jointsPosVel = Float32MultiArray()
         
         # get last 12 element of qpos and qvel
-        qp = self.data.qpos[-12:].copy()
-        qv = self.data.qvel[-12:].copy()
+        qp = self.data.qpos[-whole_body_dofs:].copy()
+        qv = self.data.qvel[-whole_body_dofs:].copy()
         jointsPosVel_ = np.concatenate((qp,qv))
         jointsPosVel.data = array.array( 'f' , jointsPosVel_.tolist())
         

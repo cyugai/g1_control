@@ -121,6 +121,9 @@ void g1Interface::setupOptimalControlProblem(const std::string& taskFile, const 
   pinocchioInterfacePtr_.reset(new PinocchioInterface(centroidal_model::createPinocchioInterface(urdfFile, modelSettings_.jointNames)));
 
   // CentroidalModelInfo
+  //loadDefaultJointState(pinocchioInterfacePtr_->getModel().nq - 6, 总的关节数（nq），减去刚体基座的 6 自由度（平移3+旋转3），得到纯关节自由度数（即只有关节部分，不含基座）。
+  //std::vector<std::string> contactNames6DoF{};
+  //std::vector<std::string> contactNames3DoF{"l_foot_toe", "r_foot_toe", "l_foot_heel", "r_foot_heel"};
   centroidalModelInfo_ = centroidal_model::createCentroidalModelInfo(
       *pinocchioInterfacePtr_, centroidal_model::loadCentroidalType(taskFile),
       centroidal_model::loadDefaultJointState(pinocchioInterfacePtr_->getModel().nq - 6, referenceFile), modelSettings_.contactNames3DoF,

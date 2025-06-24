@@ -71,8 +71,8 @@ vector_t WbcBase::update(const vector_t& stateDesired, const vector_t& inputDesi
 
 void WbcBase::updateMeasured(const vector_t& rbdStateMeasured)
 {
-  qMeasured_.head<3>() = rbdStateMeasured.segment<3>(3);  // xyz linaer pos
-  qMeasured_.segment<3>(3) = rbdStateMeasured.head<3>();
+  qMeasured_.head<3>() = rbdStateMeasured.segment<3>(3);  // xyz linear pos
+  qMeasured_.segment<3>(3) = rbdStateMeasured.head<3>();  //  euler angles
   qMeasured_.tail(info_.actuatedDofNum) = rbdStateMeasured.segment(6, info_.actuatedDofNum);
   vMeasured_.head<3>() = rbdStateMeasured.segment<3>(info_.generalizedCoordinatesNum + 3);
   vMeasured_.segment<3>(3) = getEulerAnglesZyxDerivativesFromGlobalAngularVelocity<scalar_t>(

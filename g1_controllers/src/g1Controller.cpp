@@ -55,13 +55,16 @@ bool g1Controller::init(rclcpp::Node::SharedPtr &controller_nh) {
   //第一个参数 g1Interface_->getPinocchioInterface() - 获取Pinocchio接口，用于机器人运动学和动力学计算
   //第二个参数 pinocchioMapping将质心模型映射到Pinocchio模型
   //第三个参数 g1Interface_->modelSettings().contactNames3DoF - 获取机器人接触点的名称列表，这些是3自由度的接触点
+  //contactNames3DoF{"l_foot_toe", "r_foot_toe", "l_foot_heel", "r_foot_heel"} obtained the eeKinematics through the name of the contact point
   eeKinematicsPtr_ = std::make_shared<PinocchioEndEffectorKinematics>(g1Interface_->getPinocchioInterface(), pinocchioMapping,
                                                                       g1Interface_->modelSettings().contactNames3DoF);
-
+  //rclcpp::Node::SharedPtr controllerNh_-> node handle
+  //创建一个g1Visualizer对象，用于可视化机器人模型和运动学信息;
   robotVisualizer_ = std::make_shared<g1Visualizer>(g1Interface_->getPinocchioInterface(),
                                                              g1Interface_->getCentroidalModelInfo(), *eeKinematicsPtr_, controllerNh_);
-  //加载默认关节位置
+  //加载默认关节位置 vector_t defalutJointPos_ ; size_t jointNum_ = 12;
   defalutJointPos_.resize(jointNum_);
+  //从参考文件中加载默认关节位置
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", defalutJointPos_);
 
   // Hardware interface
@@ -88,15 +91,18 @@ bool g1Controller::init(rclcpp::Node::SharedPtr &controller_nh) {
   cmd_contactFlagPub_ = controllerNh_->create_publisher<std_msgs::msg::Int8MultiArray>("/cmd_contactFlag", 2);
   vs_basePub_ = controllerNh_->create_publisher<std_msgs::msg::Float32MultiArray>("/vs_base", 2);
   vs_xianyanPub_ = controllerNh_->create_publisher<std_msgs::msg::Float32MultiArray>("/vs_xianyan", 2);
-  // State estimation 设置状态估计器 
+  // State estimation 设置状态估计器 verbose control the load of kalman filter configuration in taskFile
   setupStateEstimate(taskFile, verbose);
 
   // Whole body control 创建加权全身控制器  
   wbc_ = std::make_shared<WeightedWbc>(g1Interface_->getPinocchioInterface(), g1Interface_->getCentroidalModelInfo(),
                                        *eeKinematicsPtr_);
-  wbc_->loadTasksSetting(taskFile, verbose);
+  wbc_->loadTasksSetting(taskFile, verbose);//verbose control the load of Torque Limits, Friction Cone, Swing Leg, Base Angular
 
   // Safety Checker
+  //vector_t pose = getBasePose(observation.state, info_);
+  // check if (pose(5) > M_PI_2 || pose(5) < -M_PI_2)
+  // If the orientation is out of bounds, the safety check will fail.
   safetyChecker_ = std::make_shared<SafetyChecker>(g1Interface_->getCentroidalModelInfo());
 
   return true;
@@ -180,11 +186,11 @@ void g1Controller::HwSwitchCallback(const std_msgs::msg::Bool::SharedPtr msg) {
 
 void g1Controller::starting(const rclcpp::Time& time) {
   // Initial state
-  currentObservation_.state = vector_t::Zero(g1Interface_->getCentroidalModelInfo().stateDim);
+  currentObservation_.state = vector_t::Zero(g1Interface_->getCentroidalModelInfo().stateDim -17); //using 29dofs, minus arms 14 and wasit 3
   currentObservation_.state(8) = 0.608; // 机器人基座的z轴位置（p_base_z）
   // extract a segment of the state vector from index 12 to 12 + jointNum_ - 1
-  //Indices 0-5: Normalized centroidal momentum
-  //Indices 6-11: Base pose (position and orientation)
+  //Indices 0-5: Normalized centroidal momentum? 浮动基座的速度 线速度3维+角速度3维?
+  //Indices 6-11: Base pose (position and orientation)? 
   //Indices 12-23: Joint positions (for 12 joints)
   currentObservation_.state.segment(6 + 6, jointNum_) = defalutJointPos_;
 
@@ -199,9 +205,19 @@ void g1Controller::starting(const rclcpp::Time& time) {
 
   // Set the first observation and command and wait for optimization to finish
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
+  // setTargetTrajectories()将轨迹存储到缓冲区，只有在求解器运行前才会激活。这意味着：
+  //初始化时：必须显式设置目标轨迹，否则系统没有参考轨迹
+  //运行时：如果目标轨迹不变，无需重复设置；系统会继续使用已有的轨迹
   mpcMrtInterface_->getReferenceManager().setTargetTrajectories(target_trajectories);
   RCLCPP_INFO(controllerNh_->get_logger(),"Waiting for the initial policy ...");
   while (!mpcMrtInterface_->initialPolicyReceived() && rclcpp::ok()) {
+    //advanceMpc() 在循环中被调用，用于：
+    // 等待MPC生成初始控制策略
+    // 确保系统在开始控制前有可用的优化解
+    // 按照设定频率持续推进MPC计算直到收到初始策略
+    // advanceMpc()中调用mpc_.run(),负责在后台持续更新策略
+    // 初始化阶段：在控制器启动时，advanceMpc() 在循环中被调用直到收到初始策略
+    // 运行时阶段：通过独立的MPC线程或定时器持续调用 advanceMpc()
     mpcMrtInterface_->advanceMpc();
     rclcpp::WallRate(g1Interface_->mpcSettings().mrtDesiredFrequency_).sleep();
     //rclcpp::WallRate - 这是ROS2中的一个类，用于控制循环的执行频率。它基于系统的墙钟时间(wall clock time)来计算休眠时间。
@@ -215,31 +231,48 @@ void g1Controller::starting(const rclcpp::Time& time) {
 
 void g1Controller::update(const rclcpp::Time& time, const rclcpp::Duration& period) {  
 
-  // State Estimate
+  // State Estimate, renew measuredRbdState_
   updateStateEstimation(time, period);
 
   // Update the current state of the system
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
 
   // Load the latest MPC policy
+  //从缓冲区更新活跃的MPC控制策略
+  // 尝试获取锁：使用 std::try_to_lock 非阻塞地尝试获取缓冲区互斥锁
+  // 检查新策略：如果成功获取锁，检查 newPolicyInBuffer_ 标志
+  // 交换策略数据：如果有新策略，将缓冲区中的策略数据与活跃策略数据进行交换
+  // 修改活跃解：调用 modifyActiveSolution() 对新激活的策略进行后处理 MRT_BASE.cpp:141-166
   mpcMrtInterface_->updatePolicy();
 
   // Evaluate the current policy
   //控制器使用当前观测到的时间和状态调用 evaluatePolicy，获取优化后的状态预测和控制输入，以及计划的运动模式，然后将这些信息用于后续的全身控制计算。
+  // 验证策略可用性：检查 activePrimalSolutionPtr_ 是否为空，确保已调用过 updatePolicy()
+  // 时间范围检查：验证请求的时间是否在策略的有效时间范围内
+  // 计算控制输入：通过控制器的 computeInput() 方法计算当前时刻的最优控制输入 optimizedState 
+  // mpcState = LinearInterpolation::interpolate(currentTime, activePrimalSolutionPtr_->timeTrajectory_, activePrimalSolutionPtr_->stateTrajectory_);
+  // 插值状态轨迹：使用线性插值从预计算的状态轨迹中获取当前时刻的名义状态 optimizedInput
+  // mpcInput = activePrimalSolutionPtr_->controllerPtr_->computeInput(currentTime, currentState);
+  // 确定运动模式：从模式调度中获取当前时刻的活跃模式
   vector_t optimizedState, optimizedInput;
   mpcMrtInterface_->evaluatePolicy(currentObservation_.time, currentObservation_.state, optimizedState, optimizedInput, plannedMode_);
 
   // Whole body control
   currentObservation_.input = optimizedInput;
 
-  
-  //measuredRbdState_ contains the full rigid body dynamics state of the robot, which includes:
-  // Base orientation (Euler angles): The first 3 elements (indices 0-2)
-  // Base position (x, y, z): The next 3 elements (indices 3-5)
-  // Joint positions: The next 12 elements (indices 6-17), for the 12 joints of the g1
-  // Base angular velocity: The next 3 elements (indices 18-20)
-  // Base linear velocity: The next 3 elements (indices 21-23)
-  // Joint velocities: The final 12 elements (indices 24-35)
+  // measuredRbdState_: 当前测量的刚体动力学状态（36维）g1_12dofs
+  // 基座方向（欧拉角）：0-2
+  // 基座位置（x,y,z）：3-5
+  // 关节位置：6-17（12个关节）
+  // 基座角速度：18-20
+  // 基座线速度：21-23
+  // 关节速度：24-35（12个关节）
+  // x (42维): 
+  // 基座加速度（6维） (indices 0-5)
+  // 关节加速度（12维） (indices 6-17)
+  // 接触力（12维） (indices 18-29)
+  // 关节扭矩（12维） (indices 30-41)
+  // vector_t legRbdState_ = measuredRbdState_
   wbcTimer_.startTimer();
   vector_t x = wbc_->update(optimizedState, optimizedInput, measuredRbdState_, plannedMode_, period.seconds());
   wbcTimer_.endTimer();
@@ -291,9 +324,15 @@ void g1Controller::update(const rclcpp::Time& time, const rclcpp::Duration& peri
     std_msgs::msg::Float32MultiArray targetKp;
     std_msgs::msg::Float32MultiArray targetKd;
     
-    // leg l1-l6, r1-r6
-    targetKp.data = {120.0, 100.0, 100.0, 120.0, 5.0, 2.8, 120.0, 100.0, 100.0, 120.0, 5.0, 2.8};
-    targetKd.data = {0.6, 0.7, 0.7, 0.6, 0.15, 0.05, 0.6, 0.7, 0.7, 0.6, 0.15, 0.05};
+    // leg l1-l6, r1-r6, wasit 1-3, left arm 7dofs, right arm 7dofs
+    targetKp.data = {120.0, 100.0, 100.0, 120.0, 5.0, 2.8, 120.0, 100.0, 100.0, 120.0, 5.0, 2.8,
+                     250, 250, 200, 
+                     200, 200, 90,  90,  90, 75, 75,
+                     200, 200, 90,  90,  90, 75, 75};
+    targetKd.data = {0.6, 0.7, 0.7, 0.6, 0.15, 0.05, 0.6, 0.7, 0.7, 0.6, 0.15, 0.05,
+                     20,  12,  12,  
+                     12,  18,  10,  10, 12, 8, 8,
+                     12,  18,  10,  10, 12, 8, 8};
     
 
     if (hwSwitch_){
@@ -307,37 +346,7 @@ void g1Controller::update(const rclcpp::Time& time, const rclcpp::Duration& peri
   // Publish the observation. Only needed for the command interface
   observationPublisher_->publish(ros_msg_conversions::createObservationMsg(currentObservation_));
 
-//自己加的，可以都删掉
-  {
-    std_msgs::msg::Float32MultiArray foot_vel,Vs_base,Vs_xianyan;
-    std_msgs::msg::Int8MultiArray cmd_contactFlag;
-    cmd_contactFlag.data.resize(2);
-    foot_vel.data.resize(16);
-    Vs_base.data.resize(12);
-    Vs_xianyan.data.resize(3);
-    for(int i=0;i<12;i++){
-      foot_vel.data[i] = stateEstimate_->vf_(i);
-      Vs_base.data[i] = stateEstimate_->vs_base(i);
-    }
-    //calculate the magnitude (Euclidean norm) of the velocity for each contact point:
-    foot_vel.data[12] = sqrt(foot_vel.data[0]*foot_vel.data[0]+foot_vel.data[1]*foot_vel.data[1]+foot_vel.data[2]*foot_vel.data[2]);
-    foot_vel.data[13] = sqrt(foot_vel.data[3]*foot_vel.data[3]+foot_vel.data[4]*foot_vel.data[4]+foot_vel.data[5]*foot_vel.data[5]);
-    foot_vel.data[14] = sqrt(foot_vel.data[6]*foot_vel.data[6]+foot_vel.data[7]*foot_vel.data[7]+foot_vel.data[8]*foot_vel.data[8]);
-    foot_vel.data[15] = sqrt(foot_vel.data[9]*foot_vel.data[9]+foot_vel.data[10]*foot_vel.data[10]+foot_vel.data[11]*foot_vel.data[11]);
 
-    //The Vs_xianyan array contains the prior velocity estimation data
-    Vs_xianyan.data[0] = stateEstimate_->vs_xianyan(0);
-    Vs_xianyan.data[1] = stateEstimate_->vs_xianyan(1);
-    Vs_xianyan.data[2] = stateEstimate_->vs_xianyan(2);
-
-    contact_flag_t  contactFlag = modeNumber2StanceLeg(plannedMode_);
-    cmd_contactFlag.data[0] = contactFlag[0];
-    cmd_contactFlag.data[1] = contactFlag[1];
-    foot_vel_estimatePub_->publish(foot_vel);
-    cmd_contactFlagPub_->publish(cmd_contactFlag);
-    vs_basePub_->publish(Vs_base);
-    vs_xianyanPub_->publish(Vs_xianyan);
-  }
 
 
 
@@ -369,15 +378,42 @@ void g1Controller::updateStateEstimation(const rclcpp::Time& time, const rclcpp:
   orientationCovariance = orientationCovariance_;
   angularVelCovariance = angularVelCovariance_;
   linearAccelCovariance = linearAccelCovariance_;
-
-  stateEstimate_->updateJointStates(jointPos, jointVel);
+  //if g1=29dofs, this will need 29dofs state to update. 
+  //rbdState_.segment(6, info_.actuatedDofNum) = jointPos;
+  //rbdState_.segment(6 + info_.generalizedCoordinatesNum, info_.actuatedDofNum) = jointVel;
+  stateEstimate_->updateJointStates(jointPos, jointVel); 
   stateEstimate_->updateContact(contactFlag);
   stateEstimate_->updateImu(quat, angularVel, linearAccel, orientationCovariance, angularVelCovariance, linearAccelCovariance);
+  // rbdState_(vector_t ::Zero(2 * info_.generalizedCoordinatesNum)) 2*29dofs = 58dofs
+  // updateAngular() 更新基座的欧拉角和角速度 rbdState_.segment<3>(0) = zyx; rbdState_.segment<3>(info_.generalizedCoordinatesNum) = angularVel;
+  // updateLinear() 更新基座的位置和线速度 rbdState_.segment<3>(3) = pos; rbdState_.segment<3>(info_.generalizedCoordinatesNum + 3) = linearVel;
   measuredRbdState_ = stateEstimate_->update(time, period);
   currentObservation_.time += period.seconds();
   scalar_t yawLast = currentObservation_.state(9);
-  currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
+  // 质心动量计算, 1. 使用机器人的质量分布信息; 2. 基于当前关节配置计算质心位置和速度; 3. 将线性和角动量归一化处理
+  // g1_12dofs situation:
+  // 输入: 36维RBD状态 (measuredRbdState_)
+  // 基座方向（欧拉角）：0-2
+  // 基座位置：3-5
+  // 关节位置：6-17
+  // 基座角速度：18-20
+  // 基座线速度：21-23
+  // 关节速度：24-35
+  // 输出: 24维质心状态 (currentObservation_.state)
+  // 归一化质心动量：0-5
+  // 基座位姿：6-11
+  // 关节位置：12-23
+  vector_t centroidalState = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);//need to segment the leg joints
+  currentObservation_.state = centroidalState.head(24);
   //state(9) is the yaw angle of the base, theta_base_z
+  // 角度值在 -π 到 π 之间会发生跳跃（例如从 3.14 跳到 -3.14），这种跳跃会导致：
+  // MPC优化器认为机器人发生了大幅度旋转
+  // 产生不必要的控制指令
+  // 影响轨迹跟踪的平滑性
+  // angles::shortest_angular_distance 函数
+  // 这个函数计算两个角度之间的最短角距离，考虑了角度的周期性：
+  // 如果直接差值超过 π，则选择相反方向的较短路径
+  // 确保角度变化始终在 [-π, π] 范围内
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
   //  currentObservation_.mode = stateEstimate_->getMode();
   //TODO: 暂时用plannedMode_代替，需要在接触传感器可靠之后修改为stateEstimate_->getMode()

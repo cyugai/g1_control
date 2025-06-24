@@ -79,7 +79,7 @@ StateEstimateBase::StateEstimateBase(PinocchioInterface pinocchioInterface, Cent
   contact_tick[2] = 0;
   contact_tick[3] = 0;
 }
-
+// modify the index for g1 29dofs
 void StateEstimateBase::updateJointStates(const vector_t& jointPos, const vector_t& jointVel)
 {
   rbdState_.segment(6, info_.actuatedDofNum) = jointPos;

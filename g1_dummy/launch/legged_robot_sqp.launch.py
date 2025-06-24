@@ -7,7 +7,8 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1.rviz"
+    rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1_29_2f85.rviz"
+    # rviz_config_file = get_package_share_directory('g1_dummy') + "/rviz/g1.rviz"
     ld = launch.LaunchDescription([
         launch.actions.DeclareLaunchArgument(
             name='rviz',

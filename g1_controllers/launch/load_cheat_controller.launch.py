@@ -54,7 +54,7 @@ def generate_launch_description():
             executable="robot_state_publisher",
             output="screen",
             arguments=[launch.substitutions.LaunchConfiguration("urdfFile")],
-        ),
+        ),#ocs2
         launch_ros.actions.Node(
             package='rviz2',
             executable='rviz2',
@@ -63,7 +63,7 @@ def generate_launch_description():
             arguments=["-d", rviz_config_file],
             condition=launch.conditions.IfCondition(
                 launch.substitutions.LaunchConfiguration('rviz'))
-        ),
+        ),#ocs2
         launch_ros.actions.Node(
             package='g1_controllers',
             executable='cheat_controller_node',
